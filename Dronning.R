@@ -1,3 +1,13 @@
+# Author: MHGottlieb
+# Date: Sun Dec 16 17:08:06 2018
+# --------------
+# Description:
+# Scraping, then analysing new years adresses from HM Queen Margrethe II of DK
+# 
+# --------------
+
+# Dependencies ------------------------------------------------------------
+
   library(httr)
   library(XML)
   library(ggplot2)
@@ -6,7 +16,14 @@
   library(stringr)
   library(reshape2)
   library(tm)
+  library(tidytext)
+  library(SnowballC)
+  library(wordcloud)
 
+# Fordi jeg ikke kan lide rød ---------------------------------------------
+
+  options(warn=-1)  
+  
 # Downloader taler --------------------------------------------------------
 
   base <- "http://dronningens-nytaarstale.dk/taler/nytaarstale_"
@@ -18,13 +35,13 @@
             "http://kongehuset.dk/nyheder/laes-nytaarstalen-2016",
             "http://kongehuset.dk/nyheder/laes-hm-dronningens-nytaarstale-2017")
   
-  taler <- NULL # Tomt element som placeholder
-  taler2 <- NULL # Tomt element som placeholder
+  taler <- NULL # placeholder
+  taler2 <- NULL # placeholder
   
   for(i in 1:length(years)){
     temp <- paste0(base, years[i], ".html")
     temp <- GET(temp, add_headers("user-agent" = "Mozilla/5.0"))
-    temp <- htmlParse(temp)
+    temp <- htmlParse(temp, encoding = "UTF-8")
     text <- xpathSApply(temp, "//body", xmlValue)
     text <- paste(text, collapse=" ")
     text <- iconv(text, from="UTF-8", to="latin1")
@@ -54,23 +71,26 @@
   taler$text <- as.character(taler$text)
   taler$text <- gsub("\\s+", " ", str_trim(taler$text))
 
-  # manuel oprydning for en god ordens skyld
+  # Manuel oprydning for en god ordens skyld
   taler$text[42:46] <- substring(taler$text[42:46], 25) #Fjerner dato og tag
   taler$text[42] <- substring(taler$text[42], 1, nchar(taler$text[42])-117)
   
-  #fjerner lidt støj fra enden af hver tale
-  taler$text1 <- substring(taler$text, 1, unlist(gregexpr("GUD BEVARE DANMARK", 
+  # Fjerner lidt støj fra enden af de seneste taler
+  taler$text <- substring(taler$text, 1, unlist(gregexpr("GUD BEVARE DANMARK", 
                                                           taler$text))+18)
+  
   # Tæller ord og udregner sætningslængder
-  taler$words <- lengths(strsplit(taler$text, "\\W+"))
+  taler$nwords <- lengths(strsplit(taler$text, "\\W+"))
   taler$sentences <- str_count(taler$text, "\\.|\\?")
-  taler$sen_lengths <- taler$words/taler$sentences
+  taler$sen_lengths <- taler$nwords/taler$sentences
   
   # Ordlængder
-  
   taler$wl <- sapply(strsplit(taler$text, c(" ")), FUN=nchar) # counting word lenghts
   taler$wl <- lapply(taler$wl, function(x) {x[x!=0]}) # removes zeros
 
+  # Rydder op
+  remove(taler2, base, i, temp, text, urls, years)
+  
 # Simple search solution for single word in "taler" -----------------------
 
   taler$year[grep("Pakistan", taler$text, ignore.case=TRUE)]
@@ -78,11 +98,11 @@
 # Beregner lix ------------------------------------------------------------
 
   taler$long_words <- unlist(lapply(taler$wl, function(x){sum(x>6)}))
-  taler$lix <- taler$words/taler$sentences + taler$long_words*100/taler$words
+  taler$lix <- taler$nwords/taler$sentences + taler$long_words*100/taler$nwords
 
 # Plot1: antal ord ---------------------------------------------------------
 
-  plot1 <- ggplot(data=taler, aes(x=year, y=words)) + 
+  plot1 <- ggplot(data=taler, aes(x=year, y=nwords)) + 
     geom_point(col="steelblue", size=3) + 
     geom_smooth(method="lm", col="firebrick") +
     labs(title="Dronningens Nytårstaler", y="Ord", x="År") +
@@ -92,10 +112,8 @@
               hjust=0,vjust=0, size=3, nudge_x = 1, nudge_y=-23) +
     xlim(1972,2020) + ylim(0, 2000)
   
-  #plot1 #plotter figuren
-  
-  lm1 <- lm(words ~ year, data=taler)
-  summary(lm1) #linreg
+  lm1 <- lm(nwords ~ year, data=taler)
+  #summary(lm1) #linreg
 
 # Plot2 : Sætningslængder -------------------------------------------------
   
@@ -105,9 +123,7 @@
     labs(title="Dronningens Nytårstaler", y="Gns. ord per sætning", x="År") +
     xlim(1972,2020) + ylim(0,40)
   
-  #plot2 #plotter figuren
-  
-  linearMod <- lm(sen_lengths ~ year, data=taler)
+  lm2 <- lm(sen_lengths ~ year, data=taler)
   #summary(linearMod) #linreg
   
   
@@ -119,21 +135,20 @@
     labs(title="Dronningens Nytårstaler", y="Lix", x="År") +
     xlim(1972,2020) + ylim(0, 50)
   
-  #plot3 #plotter figuren
+  lm3 <- lm(sen_lengths ~ year, data=taler)
+  #summary(linearMod) #linregs
   
-  linearMod <- lm(sen_lengths ~ year, data=taler)
-  #summary(linearMod) #linreg
-  
-# Eksempel på sætninger ---------------------------------------------------
+# Eksempler på sætninger ---------------------------------------------------
 
-  unlist(str_split(taler$text[taler$year==1980], "\\.|\\?"))[1:4]
-  unlist(str_split(taler$text[taler$year==2014], "\\.|\\?"))[1:4]
+  ex1 <- paste(unlist(str_split(taler$text[9], "\\.|\\?"))[1:5], collapse=".")
+  ex2 <- paste(unlist(str_split(taler$text[43], "\\.|\\?"))[1:5], collapse=".")
 
 # New data frame with word lengths and years ------------------------------
 
   years <- c(1972:2017)
-  len <- unlist(lapply(taler$wl, length)) # number of words per year
-  wl <-  data.frame(wl = matrix(unlist(taler$wl)), year = rep(years, times=len)) 
+  wl <- unlist(lapply(taler$wl, length)) # number of words per year
+  wl <-  data.frame(wl = matrix(unlist(taler$wl)), year = rep(years, times=len))
+  
 
 # Density plot ------------------------------------------------------------
   
@@ -141,18 +156,17 @@
     stat_density_ridges(scale = 8,rel_min_height=0.07) +
     xlim(0, 15)
   
-  #plot4 #plotter figuren
-
 # Ordanalyse --------------------------------------------------------------
 
   #hvor mange gange nævnes div. lande
 
-  temp <- GET("www.globalis.dk/Lande")
-  lande <- htmlParse(temp)
+  lande <- GET("www.globalis.dk/Lande")
+  lande <- htmlParse(lande)
   lande <- xpathSApply(lande, "//ul/li/a", xmlValue)
   
   lande <- c(lande, "Grønland", "Færøerne")
   
+  tomatch <- lande
   tomatch <- c("terror", "jordskælv", "flodbølge", "tsunami", "storm", "orkan", 
                "vulkan", "eksplosion", "krig", "klimaforandringer")
   
@@ -177,7 +191,7 @@
     scale_fill_gradient(low="grey90", high="blue", guide="legend", na.value="grey90") +
     labs(x="", y="", title="Lande nævnt i Dronningens Nytårstale") +
     theme_bw() + theme(axis.text.x=element_text(size=12, angle=45, vjust=0.3),
-                       axis.text.y=element_text(size=12),
+                       axis.text.y=element_text(size=12, hjust=0),
                        plot.title=element_text(size=22))
 
   #Punktstørrelser
@@ -186,16 +200,13 @@
     scale_size(name="Gange nævnt", breaks=c(1,2,3,5), labels=c(1,2,3,"4+")) +
     labs(x="", y="", title="Lande nævnt i Dronningens Nytårstale") +
     theme_gray() + theme(axis.text.x=element_text(size=12, angle=45, vjust=0.3),
-                         axis.text.y=element_text(size=12),
+                         axis.text.y=element_text(size=12, hjust=0),
                          plot.title=element_text(size=22))
+  
+  remove(lande, tomatch, years, result, long)
 
-  
+# Wordcloud ----------------------------------------------------------
 
-# Frequent Terms ----------------------------------------------------------
-  
-  library(tm) # div. textminig-funktioner, herunder danske stopord
-  library(wordcloud) # giver sig selv
-  
   sw <- read.csv2("https://raw.githubusercontent.com/stopwords-iso/stopwords-da/master/stopwords-da.txt", 
                     encoding="UTF-8", header=FALSE)
   sw <- as.character(sw[,1]) #170 stopord fra MIT
@@ -216,13 +227,13 @@
             colors=brewer.pal(8, "Dark2"))
   
 # Sentiment Analysis ------------------------------------------------------
-
-
-
+  
+  taler$text_stem <- str_split(taler$text)
+  taler$text_stem <- 
+    
+  af <- get_sentiments("afinn")
   
 # Saving images -----------------------------------------------------------
 
-    gridExtra::grid.arrange(plot1, plot2, plot3, ncol=3) 
+  gridExtra::grid.arrange(plot1, plot2, plot3, ncol=3) 
   gridExtra::grid.arrange(plot6)
-  
-
