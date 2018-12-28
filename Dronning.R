@@ -5,6 +5,7 @@
   library(RColorBrewer)
   library(stringr)
   library(reshape2)
+  library(tm)
 
 # Downloader taler --------------------------------------------------------
 
@@ -72,7 +73,7 @@
 
 # Simple search solution for single word in "taler" -----------------------
 
-  taler$year[grep("færøerne", taler$text, ignore.case=TRUE)]
+  taler$year[grep("Pakistan", taler$text, ignore.case=TRUE)]
 
 # Beregner lix ------------------------------------------------------------
 
@@ -91,10 +92,10 @@
               hjust=0,vjust=0, size=3, nudge_x = 1, nudge_y=-23) +
     xlim(1972,2020) + ylim(0, 2000)
   
-  plot1 #plotter figuren
+  #plot1 #plotter figuren
   
-  linearMod <- lm(words ~ year, data=taler)
-  #summary(linearMod) #linreg
+  lm1 <- lm(words ~ year, data=taler)
+  summary(lm1) #linreg
 
 # Plot2 : Sætningslængder -------------------------------------------------
   
@@ -104,7 +105,7 @@
     labs(title="Dronningens Nytårstaler", y="Gns. ord per sætning", x="År") +
     xlim(1972,2020) + ylim(0,40)
   
-  plot2 #plotter figuren
+  #plot2 #plotter figuren
   
   linearMod <- lm(sen_lengths ~ year, data=taler)
   #summary(linearMod) #linreg
@@ -118,7 +119,7 @@
     labs(title="Dronningens Nytårstaler", y="Lix", x="År") +
     xlim(1972,2020) + ylim(0, 50)
   
-  plot3 #plotter figuren
+  #plot3 #plotter figuren
   
   linearMod <- lm(sen_lengths ~ year, data=taler)
   #summary(linearMod) #linreg
@@ -140,7 +141,7 @@
     stat_density_ridges(scale = 8,rel_min_height=0.07) +
     xlim(0, 15)
   
-  plot4 #plotter figuren
+  #plot4 #plotter figuren
 
 # Ordanalyse --------------------------------------------------------------
 
@@ -152,7 +153,8 @@
   
   lande <- c(lande, "Grønland", "Færøerne")
   
-  tomatch <- lande
+  tomatch <- c("terror", "jordskælv", "flodbølge", "tsunami", "storm", "orkan", 
+               "vulkan", "eksplosion", "krig", "klimaforandringer")
   
   result <- lapply(taler$text, str_count, tomatch)
   result <- as.data.frame(do.call(rbind, result))
@@ -161,7 +163,7 @@
   rownames(result) <- c(1972:2017)
   
   result <- result[,order(colSums(result), decreasing=FALSE)]
-  result <- result[,colSums(result)>1]
+  result <- result[,colSums(result)>0]
   result <- as.matrix(result)
 
 # Matrixplot --------------------------------------------------------------
@@ -186,7 +188,41 @@
     theme_gray() + theme(axis.text.x=element_text(size=12, angle=45, vjust=0.3),
                          axis.text.y=element_text(size=12),
                          plot.title=element_text(size=22))
+
   
-  gridExtra::grid.arrange(plot1, plot2, plot3, ncol=3) 
-  gridExtra::grid.arrange(plot6) 
+
+# Frequent Terms ----------------------------------------------------------
   
+  library(tm) # div. textminig-funktioner, herunder danske stopord
+  library(wordcloud) # giver sig selv
+  
+  sw <- read.csv2("https://raw.githubusercontent.com/stopwords-iso/stopwords-da/master/stopwords-da.txt", 
+                    encoding="UTF-8", header=FALSE)
+  sw <- as.character(sw[,1]) #170 stopord fra MIT
+  
+  docs <- Corpus(VectorSource(taler$text))
+  docs <- tm_map(docs, content_transformer(tolower))
+  docs <- tm_map(docs, removePunctuation)
+  docs <- tm_map(docs, removeWords, sw)
+  
+  dtm <- as.matrix(TermDocumentMatrix(docs))
+  dtm <- sort(rowSums(dtm),decreasing=TRUE)
+  dtm <- data.frame(word = names(dtm),freq=dtm) #taget fra sthda.com/english/wiki/text-mining-and-word-cloud-fundamentals-in-r-5-simple-steps-you-should-know
+  head(dtm, 10)
+  
+  set.seed(1)
+  wordcloud(words = dtm$word, freq = dtm$freq, min.freq = 1,
+            max.words=300, random.order=FALSE, rot.per=0.35, 
+            colors=brewer.pal(8, "Dark2"))
+  
+# Sentiment Analysis ------------------------------------------------------
+
+
+
+  
+# Saving images -----------------------------------------------------------
+
+    gridExtra::grid.arrange(plot1, plot2, plot3, ncol=3) 
+  gridExtra::grid.arrange(plot6)
+  
+
